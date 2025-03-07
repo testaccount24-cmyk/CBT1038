@@ -1,0 +1,56 @@
+    System REXX routine to update the LINKLIST
+Subject:  System REXX routine to update the LINKLIST
+From:     Larry Zuckett <larry.zuckett@broadcom.com>
+Date:     1/25/2023, 10:26 AM
+To:       sbgolob@cbttape.org
+
+Hi Sam,
+
+Larry Zuckett, I formerly worked at Ford and submitted
+the  USYNC commmand.  I have attached a System REXX routine to
+dynamically update the LINKLIST that you may want to add to your
+CBT tape. The use of it and how to use it is in the comments at
+the beginning of the System Rexx routine. It's far easier to use
+then using the individual SETPROG DEFINE, COPY, ADD, and activate
+commands.
+
+1) This is setup by adding a system rexx library to the
+   concatenation in AXRnn  in PARMLIB:
+
+REXXLIB ADD DSN(SYS2.SAXREXEC)   /* INTERNALLY DEVELOPED SYSREXX    */
+REXXLIB ADD DSN(SYS1.SAXREXEC)   /* ADD REXXLIB.DSN1 INTO THE       */
+
+2) Shutdown System Rexx:   F AXR,SHUTDOWN
+
+3) Restart System Rexx:   S AXRPSTRT   (if not in PROCLIB,
+   this can be copied from SYS1.IBM.PROCLIB)
+
+4) Verify the library is in concatenation:   F AXR,SR,R
+
+  F AXR,SR,R
+  AXR0202I SYSREXX REXXLIB DISPLAY 702
+  ENTRY VOLUME   DATA SET
+     1    SYSTEM   SYS2.SAXREXEC
+     2    MVZ25A   SYS1.SAXREXEC
+
+5) Add or delete a LINKLIST library by entering the following:
+F AXR,SWLNKLST,TIMEINT=1000 'DEL(old linklist library)'
+
+F AXR,SWLNKLST,TIMEINT=1000 'ADD(new linklist  library)'
+
+The use of this system rexx is in the comments on the rexx
+   routine
+
+I use this for dynamically doing product install maintenance and
+   upgrades
+
+--
+Larry Zuckett
+R & D Systems Engineer
+Mainframe Systems Division
+Broadcom, CA Technologies
+750 Holiday Drive
+ATLAS Systems Team PDL -  team-atlas.pdl@broadcom.com
+Pittsburgh, PA 15220
+Phone: 734-366-5114
+
