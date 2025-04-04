@@ -1,0 +1,270 @@
+/* REXX                                                              */
+/*********************************************************************/
+/* Name     - SWLNKLST (system rexx version) (supplied ASIS)         */
+/*                                                                   */
+/* Function - Software command to add or delete dsnames from/to      */
+/*            LINKLST.                                               */
+/*                                                                   */
+/* Syntax: F AXR,SWLNKLST,TIMEINT=1000 'ADD(dsn)' 'DEL(dsn)'         */
+/*                                                                   */
+/* Enter from console or EMCS console:                               */
+/*                                                                   */
+/* example: f axr,swlnklst,timeint=1000  'del(sys1.syt1.sdfhlink)'   */
+/*          f axr,swlnklst,timeint=1000  'add(sys1.syt1.sdfhlink)'   */
+/*                                                                   */
+/* Author: Larry Zuckett                                             */
+/*                                                                   */
+/*********************************************************************/
+/* Chg Date     Description                                 Proj ID  */
+/*----+--------+-------------------------------------------+----+----*/
+/* 006 01/31/19 Convert to System Rexx                           LMZ */
+/*********************************************************************/
+x = axrwto('<SWLNKLST> STARTED')
+/*********************************************************************/
+parse upper arg my_parms
+my_item = "DEBUG(Y)"
+my_ndx = wordpos(my_item,my_parms)
+if my_ndx > 0 then
+  do
+   my_parms = delword(my_parms,my_ndx,1)
+   trace all
+  end
+my_item = "DEBUG(N)"
+my_ndx = wordpos(my_item,my_parms)
+if my_ndx > 0 then my_parms = delword(my_parms,my_ndx,1)
+/*********************************************************************/
+/* Set Error variables.                                              */
+/*********************************************************************/
+synterr = 101
+deffail = 201
+delfail = 301
+addfail = 401
+actfail = 501
+dsninvl = 601
+/* Set process variables, load command.                              */
+addflg = 0
+delflg = 0
+adddsn = ''
+deldsn = ''
+/* Check syntax, determine actions.                                  */
+st = Syntax_Analysis(my_parms)
+/* Define a new linklist name.                                       */
+st = Def_New_Lnklst()
+/* Process command DEL.                                              */
+IF delflg = 1 THEN DO
+   st = Del_Dsn_Lnklst(deldsn)
+END
+/* Process command ADD.                                              */
+IF addflg = 1 THEN DO
+   st = Add_Dsn_Lnklst(adddsn)
+END
+/* Activate new Linklist name.                                       */
+st = Act_New_Lnklst()
+/* Exit.                                                             */
+CALL Main_Exit 0
+/*********************************************************************/
+EXIT 0
+
+/*********************************************************************/
+/* Check command syntax, determine actions.                          */
+Syntax_Analysis:
+
+ARG input
+x = axrwto('SYNTAX ==> 'input)
+cmd. = ''
+dsn. = ''
+PARSE VAR input cmd.1'('dsn.1')' cmd.2'('dsn.2')' .
+/* Remove blanks.                                                    */
+cmd.1 = STRIP(cmd.1)
+cmd.2 = STRIP(cmd.2)
+
+/* Minimal command is ADD(dsn) or DEL(dsn).                          */
+IF cmd.1 = '' | dsn.1 = '' THEN
+   CALL Log_Failure synterr
+/* Commands available are ADD and DEL.                               */
+IF POS(cmd.1,'ADD DEL') = 0 THEN
+   CALL Log_Failure synterr
+/* Second command may be null.                                       */
+IF cmd.2 <> '' & POS(cmd.2,'ADD DEL') = 0 THEN
+   CALL Log_Failure synterr
+/* Commands cannot be the same.                                      */
+IF cmd.1 = cmd.2 THEN
+   CALL Log_Failure synterr
+
+/* Set actions.                                                      */
+IF cmd.2 <> '' THEN cmd.0 = 2
+ELSE cmd.0 = 1
+DO i = 1 TO cmd.0
+   IF cmd.i = 'ADD' THEN DO
+      addflg = 1
+      adddsn = dsn.i
+      chkdsn = adddsn
+      if pos(',',chkdsn) > 0 then
+        parse var chkdsn chkdsn ',' loc .
+      if sysdsn(chkdsn) = 'DATASET NOT FOUND' then
+        CALL Log_Failure dsninvl
+   END
+   IF cmd.i = 'DEL' THEN DO
+      delflg = 1
+      deldsn = dsn.i
+      if sysdsn(deldsn) = 'DATASET NOT FOUND' then
+        CALL Log_Failure dsninvl
+   END
+   /* Dsnames cannot be null.                                        */
+   IF dsn.i = '' THEN CALL Log_Failure synterr
+END
+
+RETURN 0
+
+/*********************************************************************/
+/* Define a new LinkList set.                                        */
+/*********************************************************************/
+Def_New_Lnklst:
+sdate = substr(date(s),3,(length(date(s))-2))
+parse value time() WITH hours ':' mins ':' secs
+stime = hours||mins||secs
+lnksuffix = sdate||stime
+/* x = axrwto('lnksuffix  ==> 'lnksuffix) */
+lnkname = 'AUTO'||lnksuffix
+cmd = 'SETPROG LNKLST,DEFINE,NAME='lnkname',COPYFROM=CURRENT'
+myresult = axrcmd(cmd,outputvar.,5)
+parse var outputvar.1 msgid msgstr .
+select
+        when msgid = 'CSV500I' then
+        aocase = '1'
+otherwise
+        aocase = '11'
+end
+IF aocase = 11 THEN CALL Log_Failure deffail
+ ELSE
+   myresult = axrwto('CSV500I LNKLST SET 'lnkname' HAS BEEN DEFINED*')
+RETURN 0
+
+/*********************************************************************/
+/* Add dsname command.                                               */
+/*********************************************************************/
+Add_Dsn_Lnklst:
+
+ARG adddsn
+
+if pos(',',adddsn) > 0 then do
+   parse var adddsn adddsn ',' loc .
+   cmd = 'SETPROG LNKLST,ADD,NAME='lnkname',DSNAME='adddsn','loc
+   myresult = AXRCMD(cmd,outputvar.,5)
+   end
+else do
+   parse var adddsn adddsn .
+   cmd = 'SETPROG LNKLST,ADD,NAME='lnkname',DSNAME='adddsn
+   myresult = AXRCMD(cmd,outputvar.,5)
+   end
+
+parse var outputvar.1 msgid msgstr .
+select
+        when msgid = 'CSV501I' then
+        AOCASE = '1'
+        when msgid = 'CSV512I' then
+        AOCASE = '11'
+otherwise
+        AOCASE = '11'
+end
+
+IF aocase = 11 THEN CALL Log_Failure addfail
+ ELSE
+   myresult = axrwto('CSV501I DATA SET 'adddsn 'HAS BEEN ADDED TO LNKLST')
+
+RETURN 0
+
+/*********************************************************************/
+/* Del dsname command.                                               */
+/*********************************************************************/
+Del_Dsn_Lnklst:
+
+ARG deldsn
+
+cmd = 'SETPROG LNKLST,DELETE,NAME='lnkname',DSNAME='deldsn
+myresult = AXRCMD(cmd,outputvar.,5)
+parse var outputvar.1 msgid msgstr .
+select
+        when msgid = 'CSV501I' then
+        AOCASE = '1'
+        when msgid = 'CSV513I' then
+         do
+          AOCASE = '11'
+myresult = axrwto('CSV513I DATA SET 'deldsn' NOT DELETED, NOT PART OF LNKLST')
+         end
+otherwise
+        AOCASE = '11'
+end
+
+IF aocase = 11 THEN CALL Log_Failure delfail
+ ELSE
+ myresult = axrwto('CSV501I DATA SET 'deldsn' AS BEEN DELETED FROM LNKLST')
+
+RETURN 0
+
+/*********************************************************************/
+/* Activate new Linklist set.                                        */
+/*********************************************************************/
+Act_New_Lnklst:
+cmd = 'SETPROG LNKLST,ACTIVATE,NAME='lnkname
+myresult = AXRCMD(cmd,outputvar.,5)
+parse var outputvar.1 msgid msgstr .
+select
+        when msgid = 'CSV500I' then
+        aocase = '1'
+        when msgid = 'CSV501I' then
+        aocase = '1'
+otherwise
+        aocase = '11'
+end
+
+IF aocase = 11 THEN CALL Log_Failure actfail
+ELSE
+  myresult = axrwto('LNKLST set 'lnkname' successfully activated.')
+
+RETURN 0
+
+/*********************************************************************/
+/* Log Failure.                                                      */
+/*********************************************************************/
+Log_Failure:
+
+ARG failure .
+
+SELECT
+  WHEN failure = synterr THEN
+    x = axrwto('=> Syntax Error: => 'cmd)
+  WHEN failure = deffail THEN
+    x = axrwto('=> LNKLST DEFINE Failed:')
+  WHEN failure = delfail THEN
+    x = axrwto('=> LNKLST DELETE Failed:')
+  WHEN failure = addfail THEN
+    x = axrwto('=> LNKLST ADD Failed:')
+  WHEN failure = actfail THEN
+    x = axrwto('=> LNKLST ACTIVATE Failed:')
+  OTHERWISE NOP
+END
+
+CALL Main_Exit failure
+
+RETURN 0
+
+/*********************************************************************/
+/* Main Exit                                                         */
+/*********************************************************************/
+Main_Exit:
+
+ARG src
+
+rc0   = "SWLNKLST New LNKLST "lnkname" successfully activated."
+rc101 = "SWLNKLST Syntax Error. SWLNKLST ADD(dsn) DEL(dsn)."
+rc201 = "SWLNKLST Define Failed."
+rc301 = "SWLNKLST Delete Failed."
+rc401 = "SWLNKLST Add Failed."
+rc501 = "SWLNKLST Activate Failed."
+rc601 = "SWLNKLST dataset not found on ADD or DEL"
+
+interpret 'endmsg =  rc'src
+x = axrwto(endmsg)
+x = axrwto('<SWLNKLST> ENDED')
+EXIT 0
